@@ -33,8 +33,12 @@ namespace WebScraper.Scraper
 
             await DownloadAllImagesOnPage(baseUri);
 
-            var htmlDocument = await GetDocumentFromUrl(baseUri);
-            htmlDocument.Save(BaseOnRoot("index.html"));
+            var doc = await GetDocumentFromUrl(baseUri);
+            if(doc == null)
+            {
+                return;
+            }
+            doc.Save(BaseOnRoot("index.html"));
             UrlsVisited.Add(rootUrl);
             await ProcessAllLinksOnPage(baseUri);
 
@@ -69,6 +73,8 @@ namespace WebScraper.Scraper
             await DownloadAllImagesOnPage(uri);
             var structure = GetFolderStructure(uri);
             var doc = await GetDocumentFromUrl(uri);
+            if (doc == null) 
+                return;
             Directory.CreateDirectory(BaseOnRoot(structure.FolderPath));
             lock (visitlocker)
             {
@@ -80,6 +86,10 @@ namespace WebScraper.Scraper
         private async Task<HtmlDocument> GetDocumentFromUrl(Uri url)
         {
             var response = await client.GetAsync(url);
+            if (!response.IsSuccessStatusCode)
+            {
+                return null;
+            }
             var pageContent = await response.Content.ReadAsStringAsync();
 
             var htmlDocument = new HtmlDocument();
@@ -103,6 +113,8 @@ namespace WebScraper.Scraper
         private async Task ProcessAllLinksOnPage(Uri url)
         {
             var doc = await GetDocumentFromUrl(url);
+            if(doc == null) 
+                return;
             var links = new List<Uri>();
 
             links.AddRange(GetAllLinksOnPage(doc));
@@ -126,10 +138,11 @@ namespace WebScraper.Scraper
 
         private List<Uri> GetAllLinksOnPage(HtmlDocument document)
         {
-            var links = new List<Uri>();
+            var toRet = new List<Uri>();
 
             var anchors = document.DocumentNode.SelectNodes("//a");
-
+            var links = document.DocumentNode.SelectNodes("//link");
+            
             if (anchors != null && anchors.Count > 0)
             {
                 foreach (var a in anchors)
@@ -138,10 +151,21 @@ namespace WebScraper.Scraper
                     if (href == null)
                         continue;
 
-                    links.Add(new Uri(href.Value, UriKind.RelativeOrAbsolute));
+                    toRet.Add(new Uri(href.Value, UriKind.RelativeOrAbsolute));
                 }
             }
-            return links;
+            if(links != null && links.Count > 0)
+            {
+                foreach (var link in links)
+                {
+                    var href = link.Attributes["href"];
+                    if (href == null)
+                        continue;
+
+                    toRet.Add(new Uri(href.Value, UriKind.RelativeOrAbsolute));
+                }
+            }
+            return toRet;
         }
 
         private List<Uri> GetAllScriptsOnPage(HtmlDocument document)
@@ -166,6 +190,9 @@ namespace WebScraper.Scraper
         private async Task DownloadAllImagesOnPage(Uri url)
         {
             var doc = await GetDocumentFromUrl(url);
+            if (doc == null) 
+                return;
+
             var images = doc.DocumentNode.SelectNodes("//img");
             if (images == null || images.Count == 0) 
                 return;
