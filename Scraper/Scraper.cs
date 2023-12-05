@@ -1,12 +1,7 @@
 ﻿using HtmlAgilityPack;
 using Microsoft.Extensions.Logging;
-using System;
 using System.Buffers;
 using System.Collections.Concurrent;
-using System.Collections.Frozen;
-using System.Linq;
-using System.Net.Http;
-using static System.Net.Mime.MediaTypeNames;
 
 namespace WebScraper.Scraper
 {
@@ -15,14 +10,14 @@ namespace WebScraper.Scraper
         private const string RootFolder = "./root";
         private string BaseOnRoot(string url) => $"{RootFolder}/{url}";
 
-        private static readonly object visitlocker = new object();
-        private static readonly object foundlocker = new object();
+        private static readonly object visitlocker = new ();
+        private static readonly object foundlocker = new ();
 
-        private volatile List<string> UrlsVisited = new List<string>();
-        private volatile ConcurrentQueue<string> UrlsFound = new ConcurrentQueue<string>();
+        private volatile List<string> UrlsVisited = [];
+        private volatile ConcurrentQueue<string> UrlsFound = [];
 
-        private string BaseUrl { get; set; }
-        private Uri GetFullUri(Uri relativeUri) => new Uri(new Uri(BaseUrl), relativeUri);
+        private string BaseUrl { get; set; } = string.Empty;
+        private Uri GetFullUri(Uri relativeUri) => new (new Uri(BaseUrl), relativeUri);
 
         public async Task ScrapeWebsite(string rootUrl)
         {
@@ -39,7 +34,7 @@ namespace WebScraper.Scraper
                 return;
             }
             doc.Save(BaseOnRoot("index.html"));
-            UrlsVisited.Add(rootUrl);
+            UrlsVisited.Add(baseUri.AbsoluteUri);
             await ProcessAllLinksOnPage(baseUri);
 
             List<Task> runningTask = new List<Task>();
@@ -57,10 +52,15 @@ namespace WebScraper.Scraper
 
                 runningTask.Remove(completedTask);
 
-                logger.LogWarning($"Loop ended");
-                logger.LogWarning($"UrlsVisited Count = {UrlsVisited.Count}");
-                logger.LogWarning($"UrlsFound Count = {UrlsFound.Count}");
-                logger.LogTrace("");
+                Console.Clear();
+
+                Console.SetCursorPosition(0, 3);
+                await Console.Out.WriteLineAsync($"Processed pages = {UrlsVisited.Count:N0}");
+                await Console.Out.WriteLineAsync($"Remaining pages = {UrlsFound.Count:N0}");
+                await Console.Out.WriteLineAsync($"");
+                double progress = (double)UrlsVisited.Count / (UrlsVisited.Count + UrlsFound.Count);
+                await Console.Out.WriteLineAsync($"Progress : {progress:P2}");
+                await Console.Out.WriteLineAsync(Helpers.UserMessages[Helpers.MapDoubleToNearestKey(progress)]);
             }
 
             await Console.Out.WriteLineAsync("Hello");
@@ -83,7 +83,7 @@ namespace WebScraper.Scraper
             doc.Save(BaseOnRoot(uri.LocalPath));
         }
 
-        private async Task<HtmlDocument> GetDocumentFromUrl(Uri url)
+        private async Task<HtmlDocument?> GetDocumentFromUrl(Uri url)
         {
             var response = await client.GetAsync(url);
             if (!response.IsSuccessStatusCode)
@@ -221,11 +221,5 @@ namespace WebScraper.Scraper
             Directory.CreateDirectory(BaseOnRoot(structure.FolderPath));
             await File.WriteAllBytesAsync(BaseOnRoot(fullUri.LocalPath), imageData);
         }
-    }
-
-    public struct PathParts
-    {
-        public string FolderPath { get; set; }
-        public string FileName { get; set;}
     }
 }
