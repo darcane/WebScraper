@@ -23,10 +23,6 @@ try
             });
         })
         .AddSingleton(typeof(HttpClient))
-        //.Configure<HttpClient>(c =>
-        //{
-        //    c.BaseAddress
-        //})
         .AddSingleton<IScraper, Scraper>()
         .BuildServiceProvider();
     
@@ -34,13 +30,19 @@ try
     if (logger == null)
         throw new ArgumentNullException(nameof(logger));
 
-    logger.LogDebug("Starting application");
+    await Console.Out.WriteLineAsync("Starting application");
 
     var scraper = serviceProvider.GetService<IScraper>();
     if (scraper == null)
         throw new ArgumentNullException(nameof(scraper));
 
-    await scraper.ScrapeWebsite(Helpers.BaseUrl);
+    
+    var urlToProcess = Helpers.BaseUrl;
+    if(args != null && args.Length > 0)
+    {
+        urlToProcess = args[0];
+    }
+    await scraper.ScrapeWebsite(urlToProcess);
 
 }
 catch (Exception ex)

@@ -6,7 +6,7 @@ namespace WebScraper
     {
         public const string BaseUrl = @"https://books.toscrape.com/";
 
-        private static Dictionary<int, string> _userMessages = new()
+        private static readonly Dictionary<int, string> _userMessages = new()
         {
             {0, "Initializing..."},
             {5, "Checking permissions..."},
@@ -27,7 +27,8 @@ namespace WebScraper
             {80, "Verifying downloaded content..."},
             {85, "Enhancing user interface..."},
             {90, "Finalizing..."},
-            {95, "Almost there! Wrapping up..."}
+            {95, "Almost there! Wrapping up..."},
+            {100, "Thank you for your patience!"},
         };
 
         public static FrozenDictionary<int, string> UserMessages => _userMessages.ToFrozenDictionary();
@@ -35,6 +36,17 @@ namespace WebScraper
         {
             int percentage = (int)Math.Round(value * 100 / 5) * 5;
             return _userMessages.Keys.Contains(percentage) ? percentage : _userMessages.Keys.Min(k => Math.Abs(k - percentage));
+        }
+                
+        public static async Task WriteProgress(int visited, int remaining)
+        {
+            Console.SetCursorPosition(0, 3);
+            await Console.Out.WriteLineAsync($"Processed pages = {visited:N0}".PadRight(Console.BufferWidth));
+            await Console.Out.WriteLineAsync($"Remaining pages = {remaining:N0}".PadRight(Console.BufferWidth));
+            await Console.Out.WriteLineAsync($"".PadRight(Console.BufferWidth));
+            double progress = (double)visited / (visited + remaining);
+            await Console.Out.WriteLineAsync($"Progress : {progress:P2}".PadRight(Console.BufferWidth));
+            await Console.Out.WriteLineAsync(Helpers.UserMessages[Helpers.MapDoubleToNearestKey(progress)].PadRight(Console.BufferWidth));
         }
     }
 }
