@@ -8,6 +8,8 @@ using WebScraper.Scraper;
 
 try
 {
+    Console.CursorVisible = false;
+
     var serviceProvider = new ServiceCollection()
         .AddLogging(c =>
         {
@@ -25,11 +27,22 @@ try
         .BuildServiceProvider();
     
     var logger = serviceProvider.GetService<ILogger<Program>>();
-    logger.LogDebug("Starting application");
+    if (logger == null)
+        throw new ArgumentNullException(nameof(logger));
+
+    await Console.Out.WriteLineAsync("Starting application");
 
     var scraper = serviceProvider.GetService<IScraper>();
+    if (scraper == null)
+        throw new ArgumentNullException(nameof(scraper));
 
-    await scraper.ScrapeWebsite(Constants.BaseUrl);
+    
+    var urlToProcess = Helpers.BaseUrl;
+    if(args != null && args.Length > 0)
+    {
+        urlToProcess = args[0];
+    }
+    await scraper.ScrapeWebsite(urlToProcess);
 
 }
 catch (Exception ex)

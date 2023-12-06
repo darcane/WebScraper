@@ -1,12 +1,7 @@
 ﻿using HtmlAgilityPack;
 using Microsoft.Extensions.Logging;
-using System;
 using System.Buffers;
 using System.Collections.Concurrent;
-using System.Collections.Frozen;
-using System.Linq;
-using System.Net.Http;
-using static System.Net.Mime.MediaTypeNames;
 
 namespace WebScraper.Scraper
 {
@@ -15,20 +10,19 @@ namespace WebScraper.Scraper
         private const string RootFolder = "./root";
         private string BaseOnRoot(string url) => $"{RootFolder}/{url}";
 
-        private static readonly object visitlocker = new object();
-        private static readonly object foundlocker = new object();
+        private static readonly object visitlocker = new ();
+        private static readonly object foundlocker = new ();
 
-        private volatile List<string> UrlsVisited = new List<string>();
-        private volatile ConcurrentQueue<string> UrlsFound = new ConcurrentQueue<string>();
+        private volatile List<string> UrlsVisited = [];
+        private volatile ConcurrentQueue<string> UrlsFound = [];
 
-        private string BaseUrl { get; set; }
-        private Uri GetFullUri(Uri relativeUri) => new Uri(new Uri(BaseUrl), relativeUri);
+        private string BaseUrl { get; set; } = string.Empty;
 
         public async Task ScrapeWebsite(string rootUrl)
         {
             BaseUrl = rootUrl;
             var baseUri = new Uri(BaseUrl);
-            logger.LogDebug($"Scraping starting with url: {BaseUrl}");
+            await Console.Out.WriteLineAsync($"Scraping starting with url: {BaseUrl}");
             Directory.CreateDirectory(RootFolder);
 
             await DownloadAllImagesOnPage(baseUri);
@@ -39,13 +33,13 @@ namespace WebScraper.Scraper
                 return;
             }
             doc.Save(BaseOnRoot("index.html"));
-            UrlsVisited.Add(rootUrl);
+            UrlsVisited.Add(baseUri.AbsoluteUri);
             await ProcessAllLinksOnPage(baseUri);
 
             List<Task> runningTask = new List<Task>();
 
             int parallelTasks = 8;
-
+            
             while(UrlsFound.Count > 0 || runningTask.Count > 0)
             {
                 while(runningTask.Count < parallelTasks && UrlsFound.TryDequeue(out var currentItem))
@@ -56,25 +50,24 @@ namespace WebScraper.Scraper
                 var completedTask = await Task.WhenAny(runningTask);
 
                 runningTask.Remove(completedTask);
-
-                logger.LogWarning($"Loop ended");
-                logger.LogWarning($"UrlsVisited Count = {UrlsVisited.Count}");
-                logger.LogWarning($"UrlsFound Count = {UrlsFound.Count}");
-                logger.LogTrace("");
+                await Task.Run(async () => await Helpers.WriteProgress(UrlsVisited.Count, UrlsFound.Count));
             }
-
-            await Console.Out.WriteLineAsync("Hello");
+            
+            await Console.Out.WriteLineAsync("Scraping completed!");
+            Console.Beep();
+            Console.ReadKey();
         }
+
 
         public async Task ProcessPage(string url)
         {
             var uri = new Uri(url);
-            await ProcessAllLinksOnPage(uri);
-            await DownloadAllImagesOnPage(uri);
-            var structure = GetFolderStructure(uri);
             var doc = await GetDocumentFromUrl(uri);
             if (doc == null) 
                 return;
+            await ProcessAllLinksOnPage(uri);
+            await DownloadAllImagesOnPage(uri);
+            var structure = GetFolderStructure(uri);
             Directory.CreateDirectory(BaseOnRoot(structure.FolderPath));
             lock (visitlocker)
             {
@@ -83,7 +76,7 @@ namespace WebScraper.Scraper
             doc.Save(BaseOnRoot(uri.LocalPath));
         }
 
-        private async Task<HtmlDocument> GetDocumentFromUrl(Uri url)
+        private async Task<HtmlDocument?> GetDocumentFromUrl(Uri url)
         {
             var response = await client.GetAsync(url);
             if (!response.IsSuccessStatusCode)
@@ -125,8 +118,10 @@ namespace WebScraper.Scraper
                 if (link.IsAbsoluteUri)
                     continue;
 
-                var fullUri = GetFullUri(link).AbsoluteUri;
+                var fullUri = GetFullUri(url, link).AbsoluteUri;
                 if (UrlsVisited.Contains(fullUri))
+                    continue;
+                if(UrlsFound.Contains(fullUri))
                     continue;
 
                 lock (foundlocker)
@@ -207,11 +202,13 @@ namespace WebScraper.Scraper
                 if (source.IsAbsoluteUri)
                     return;
 
-                var fullUri = GetFullUri(source);
+                var fullUri = GetFullUri(url, source);
                 await DownloadImage(fullUri);
             })).ToArray();
             Task.WaitAll(tasks);
         }
+
+        private Uri GetFullUri(Uri currentUri, Uri relativeUri) => new (currentUri, relativeUri);
 
         private async Task DownloadImage(Uri fullUri)
         {
@@ -221,11 +218,5 @@ namespace WebScraper.Scraper
             Directory.CreateDirectory(BaseOnRoot(structure.FolderPath));
             await File.WriteAllBytesAsync(BaseOnRoot(fullUri.LocalPath), imageData);
         }
-    }
-
-    public struct PathParts
-    {
-        public string FolderPath { get; set; }
-        public string FileName { get; set;}
     }
 }
